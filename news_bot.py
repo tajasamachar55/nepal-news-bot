@@ -149,11 +149,13 @@ def write_script_with_gemini(articles):
         script = data["candidates"][0]["content"]["parts"][0]["text"]
         print("✅ Script written successfully!")
         return script
-    except Exception as e:
-        print(f"❌ Gemini API error: {e}")
-        if hasattr(response, 'text'):
-            print(f"   Response: {response.text[:500]}")
-        return f"❌ स्क्रिप्ट बनाउन असफल: {e}"
+   except Exception as e:
+        error_msg = str(e)
+        # Hide API key from error messages
+        if GEMINI_API_KEY in error_msg:
+            error_msg = error_msg.replace(GEMINI_API_KEY, "***")
+        print(f"❌ Gemini API error: {error_msg}")
+        return f"❌ स्क्रिप्ट बनाउन असफल। कृपया पछि पुनः प्रयास गर्नुस्।"
 
 
 # ── Step 3: Send to Telegram ───────────────────────────────────
