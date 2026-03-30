@@ -1,0 +1,37 @@
+name: Nepal News Bot
+
+on:
+  schedule:
+    # Runs at 6:00 AM, 12:00 PM, 6:00 PM, 12:00 AM Nepal Time (UTC+5:45)
+    # Nepal 6:00 AM  = UTC 00:15
+    # Nepal 12:00 PM = UTC 06:15
+    # Nepal 6:00 PM  = UTC 12:15
+    # Nepal 12:00 AM = UTC 18:15
+    - cron: '15 0 * * *'
+    - cron: '15 6 * * *'
+    - cron: '15 12 * * *'
+    - cron: '15 18 * * *'
+  workflow_dispatch:  # allows manual run from GitHub website
+
+jobs:
+  run-news-bot:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run News Bot
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python news_bot.py
