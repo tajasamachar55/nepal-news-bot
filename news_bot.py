@@ -9,15 +9,35 @@ GROQ_API_KEY     = os.environ.get("GROQ_API_KEY", "")
 TELEGRAM_TOKEN   = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 
+# ── Many more RSS feeds ────────────────────────────────────────
 RSS_FEEDS = [
-    {"name": "Kantipur",     "url": "https://ekantipur.com/rss"},
-    {"name": "Onlinekhabar", "url": "https://www.onlinekhabar.com/feed"},
-    {"name": "Setopati",     "url": "https://www.setopati.com/feed"},
-    {"name": "Ratopati",     "url": "https://ratopati.com/rss"},
-    {"name": "Nepal Khabar", "url": "https://www.nepalkhabar.com/feed"},
-    {"name": "Nagarik News", "url": "https://nagariknews.nagariknetwork.com/feed"},
-    {"name": "Nepal News",   "url": "https://nepalnews.com/feed"},
-    {"name": "Republica",    "url": "https://myrepublica.nagariknetwork.com/feed"},
+    # Nepali language
+    {"name": "Kantipur",          "url": "https://ekantipur.com/rss"},
+    {"name": "Onlinekhabar",      "url": "https://www.onlinekhabar.com/feed"},
+    {"name": "Setopati",          "url": "https://www.setopati.com/feed"},
+    {"name": "Ratopati",          "url": "https://ratopati.com/rss"},
+    {"name": "Nepal Khabar",      "url": "https://www.nepalkhabar.com/feed"},
+    {"name": "Nagarik News",      "url": "https://nagariknews.nagariknetwork.com/feed"},
+    {"name": "Nepal News",        "url": "https://nepalnews.com/feed"},
+    {"name": "Naya Patrika",      "url": "https://www.nayapatrikadaily.com/feed"},
+    {"name": "Himalkhabar",       "url": "https://himalkhabar.com/feed"},
+    {"name": "Khabarhub",         "url": "https://english.khabarhub.com/feed"},
+    {"name": "Nepali Times",      "url": "https://nepalitimes.com/feed"},
+    {"name": "Karobar",           "url": "https://karobardaily.com/feed"},
+    {"name": "Arthik Abhiyan",    "url": "https://arthikabhiyan.com/feed"},
+    # English Nepal news
+    {"name": "Republica",         "url": "https://myrepublica.nagariknetwork.com/feed"},
+    {"name": "Himalayan Times",   "url": "https://thehimalayantimes.com/feed"},
+    {"name": "Kathmandu Post",    "url": "https://kathmandupost.com/rss"},
+    # International (for world news section)
+    {"name": "BBC World",         "url": "https://feeds.bbci.co.uk/news/world/rss.xml"},
+    {"name": "Al Jazeera",        "url": "https://www.aljazeera.com/xml/rss/all.xml"},
+    # Sports
+    {"name": "ESPN Cricket",      "url": "https://www.espncricinfo.com/rss/content/story/feeds/0.xml"},
+    {"name": "Goal.com",          "url": "https://www.goal.com/feeds/en/news"},
+    # Business/Finance Nepal
+    {"name": "RONB",              "url": "https://www.ratopati.com/category/business/feed"},
+    {"name": "ShareSansar",       "url": "https://www.sharesansar.com/feed"},
 ]
 
 HOURS_BACK = 24
@@ -38,7 +58,7 @@ def scrape_news():
                     title   = entry.get("title", "").strip()
                     summary = entry.get("summary", entry.get("description", "")).strip()
                     link    = entry.get("link", "")
-                    summary = re.sub(r"<[^>]+>", "", summary)[:300]
+                    summary = re.sub(r"<[^>]+>", "", summary)[:500]
                     if title:
                         all_articles.append({
                             "source":    feed_info["name"],
@@ -49,7 +69,7 @@ def scrape_news():
                         })
                         count += 1
             print(f"  {feed_info['name']}: {count} articles")
-            time.sleep(1)
+            time.sleep(0.5)
         except Exception as e:
             print(f"  {feed_info['name']}: Failed ({e})")
     print(f"Total articles: {len(all_articles)}")
@@ -60,60 +80,104 @@ def write_script_with_groq(articles):
         return "कुनै समाचार फेला परेन।"
     print("Sending to Groq AI...")
 
-    article_text = ""
-    for i, a in enumerate(articles[:60], 1):
-        article_text += f"{i}. [{a['source']}] {a['title']}\n"
-        if a['summary']:
-            article_text += f"   सारांश: {a['summary'][:200]}\n"
-        article_text += "\n"
+    # Separate Nepal news from international
+    nepal_articles  = [a for a in articles if a["source"] not in ["BBC World", "Al Jazeera", "ESPN Cricket", "Goal.com"]]
+    world_articles  = [a for a in articles if a["source"] in ["BBC World", "Al Jazeera"]]
+    sports_articles = [a for a in articles if a["source"] in ["ESPN Cricket", "Goal.com"]]
+    biz_articles    = [a for a in articles if a["source"] in ["RONB", "ShareSansar", "Karobar", "Arthik Abhiyan"]]
 
-    today = datetime.now().strftime("%Y-%m-%d")
+    def format_list(arts, limit=30):
+        text = ""
+        for i, a in enumerate(arts[:limit], 1):
+            text += f"{i}. [{a['source']}] {a['title']}\n"
+            if a['summary']:
+                text += f"   {a['summary'][:400]}\n"
+            text += "\n"
+        return text
 
-    prompt = f"""तपाईं एक अनुभवी नेपाली समाचार एंकर हुनुहुन्छ। तल दिइएका पछिल्लो २४ घण्टाका समाचार शीर्षकहरूबाट एउटा पूर्ण प्रसारण समाचार स्क्रिप्ट लेख्नुस्।
+    today    = datetime.now().strftime("%Y-%m-%d")
+    day_name = datetime.now().strftime("%A")
 
-आजको मिति: {today}
+    prompt = f"""तपाईं नेपालको एक वरिष्ठ र अनुभवी समाचार एंकर हुनुहुन्छ जो रेडियो र यूट्युब च्यानलका लागि स्क्रिप्ट लेख्नुहुन्छ।
 
-स्क्रिप्टको ढाँचा यसरी हुनुपर्छ:
+आजको मिति: {today}, {day_name}
 
-🔴 प्रमुख समाचार (पहिलो २-३ मिनेट)
-सबैभन्दा महत्त्वपूर्ण ५ वटा समाचार छान्नुस्। प्रत्येक समाचार ३-४ वाक्यमा बुलेटिन शैलीमा लेख्नुस्।
+तलका समाचारहरूबाट एउटा सम्पूर्ण र विस्तृत समाचार स्क्रिप्ट लेख्नुस् जुन बोल्दा २०-२५ मिनेट लाग्ने गरी कम्तीमा ५०००-६००० अक्षरको होस्।
 
-📋 विस्तृत समाचार (१५-२० मिनेट)
-बाँकी १०-१५ वटा महत्त्वपूर्ण समाचारहरू विस्तृत र व्याख्यात्मक तरिकाले लेख्नुस्। पाठकलाई सन्दर्भ र पृष्ठभूमि जानकारी दिनुस्।
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+महत्त्वपूर्ण निर्देशनहरू:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+१. स्टोरीटेलिङ शैली — हरेक समाचारलाई एउटा कथाजस्तो बनाउनुस्। पृष्ठभूमि, कारण, असर र भविष्यको अनुमान समावेश गर्नुस्।
+२. सानो समाचारलाई पनि ठूलो बनाउनुस् — सन्दर्भ थप्नुस्, विश्लेषण गर्नुस्।
+३. श्रोतालाई सम्बोधन गर्नुस् — "साथीहरू", "हाम्रा श्रोताहरू" भनी।
+४. हरेक खण्डमा सहज transition राख्नुस्।
+५. शुद्ध, सरल र बोधगम्य नेपाली भाषा प्रयोग गर्नुस्।
 
-📌 अन्य छोटो समाचार
-बाँकी समाचारहरू एक-दुई वाक्यमा।
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+स्क्रिप्टको ढाँचा:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-नियमहरू:
-- शुद्ध नेपाली भाषामा लेख्नुस्
-- समाचार एंकरको शैलीमा लेख्नुस्
-- प्रत्येक समाचारको स्रोत उल्लेख गर्नुस्
-- नक्कली तथ्य नथप्नुस्
+[परिचय — १५ सेकेन्ड]
+आकर्षक उद्घाटन वाक्य। आजका मुख्य समाचारको संक्षिप्त टिजर।
 
-समाचारहरू:
-{article_text}
+🔴 प्रमुख समाचार — २ मिनेट
+सबैभन्दा महत्त्वपूर्ण ४-५ समाचार। बुलेटिन शैलीमा। छोटो र स्पष्ट।
 
-अब स्क्रिप्ट लेख्नुस्:"""
+🇳🇵 राष्ट्रिय समाचार — ८-१० मिनेट
+६-७ वटा राष्ट्रिय समाचार। प्रत्येकलाई ३-५ वाक्यमा विस्तृत स्टोरीटेलिङ शैलीमा। पृष्ठभूमि र विश्लेषण थप्नुस्।
+
+🌍 अन्तर्राष्ट्रिय समाचार — ४-५ मिनेट
+३-४ वटा विश्व समाचार। नेपालमा पर्ने प्रभाव उल्लेख गर्नुस्।
+
+💰 आर्थिक तथा व्यापार समाचार — ३-४ मिनेट
+शेयर बजार, बैंकिङ, व्यापार, रोजगारी सम्बन्धी समाचार।
+
+🏏 खेलकुद समाचार — २-३ मिनेट
+क्रिकेट, फुटबल र अन्य खेलकुद समाचार।
+
+🌤️ मौसम र अन्य — १ मिनेट
+मौसम अपडेट र छोटा समाचार।
+
+[समापन — १५ सेकेन्ड]
+धन्यवाद र अर्को अपडेटको जानकारी।
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+समाचार स्रोतहरू:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🇳🇵 नेपाली समाचार:
+{format_list(nepal_articles, 40)}
+
+🌍 अन्तर्राष्ट्रिय समाचार:
+{format_list(world_articles, 10)}
+
+💰 आर्थिक समाचार:
+{format_list(biz_articles, 10)}
+
+🏏 खेलकुद:
+{format_list(sports_articles, 8)}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+अब पूरा स्क्रिप्ट लेख्नुस् — कम्तीमा ५००० अक्षर। हरेक खण्डलाई विस्तृत र स्टोरीटेलिङ शैलीमा लेख्नुस्:"""
 
     headers = {
         "Authorization": f"Bearer {GROQ_API_KEY}",
         "Content-Type": "application/json"
     }
-
     payload = {
         "model": "llama-3.3-70b-versatile",
         "messages": [
             {
                 "role": "system",
-                "content": "तपाईं एक अनुभवी नेपाली समाचार एंकर हुनुहुन्छ। शुद्ध नेपाली भाषामा मात्र जवाफ दिनुस्।"
+                "content": "तपाईं नेपालका एक वरिष्ठ समाचार एंकर हुनुहुन्छ। तपाईं स्टोरीटेलिङ शैलीमा लामो, विस्तृत र आकर्षक समाचार स्क्रिप्ट लेख्नुहुन्छ। शुद्ध नेपाली भाषामा मात्र जवाफ दिनुस्। कम्तीमा ५००० अक्षरको स्क्रिप्ट लेख्नुस्।"
             },
             {
                 "role": "user",
                 "content": prompt
             }
         ],
-        "temperature": 0.7,
-        "max_tokens": 4096
+        "temperature": 0.75,
+        "max_tokens": 8000
     }
 
     try:
@@ -121,12 +185,12 @@ def write_script_with_groq(articles):
             "https://api.groq.com/openai/v1/chat/completions",
             headers=headers,
             json=payload,
-            timeout=60
+            timeout=120
         )
         response.raise_for_status()
         data   = response.json()
         script = data["choices"][0]["message"]["content"]
-        print("Script written successfully!")
+        print(f"Script written! Length: {len(script)} characters")
         return script
     except Exception as e:
         error_msg = str(e)
@@ -138,8 +202,10 @@ def write_script_with_groq(articles):
 def send_to_telegram(script, article_count):
     print("Sending to Telegram...")
     today  = datetime.now().strftime("%Y/%m/%d %H:%M")
-    header = f"🇳🇵 नेपाल समाचार स्क्रिप्ट\n📅 {today}\n📰 {article_count} समाचारबाट संकलित\n\n"
+    header = f"🇳🇵 *ताजा समाचार स्क्रिप्ट*\n📅 {today}\n📰 {article_count} समाचारबाट संकलित\n📻 अवधि: २०-२५ मिनेट\n\n"
     full_message = header + script
+
+    # Split into 4000 char chunks for Telegram
     max_len = 4000
     parts   = []
     while len(full_message) > max_len:
@@ -158,7 +224,7 @@ def send_to_telegram(script, article_count):
             if resp.status_code == 200:
                 print(f"  Part {i+1}/{len(parts)} sent!")
             else:
-                print(f"  Part {i+1} failed: {resp.text[:200]}")
+                print(f"  Part {i+1} failed: {resp.text[:300]}")
             time.sleep(1)
         except Exception as e:
             print(f"  Telegram error: {e}")
@@ -167,7 +233,7 @@ def save_to_file(script):
     filename = f"script_{datetime.now().strftime('%Y%m%d_%H%M')}.txt"
     with open(filename, "w", encoding="utf-8") as f:
         f.write(script)
-    print(f"Saved to {filename}")
+    print(f"Saved to {filename} ({len(script)} chars)")
 
 def main():
     print("=" * 50)
