@@ -30,6 +30,9 @@ RSS_FEEDS = [
 
 HOURS_BACK = 24
 
+SYSTEM_PROMPT = "तपाईं नेपालका एक वरिष्ठ समाचार एंकर हुनुहुन्छ। स्टोरीटेलिङ शैलीमा विस्तृत र आकर्षक समाचार स्क्रिप्ट लेख्नुहुन्छ। शुद्ध नेपाली भाषामा मात्र जवाफ दिनुस्।"
+
+# ── Scrape ─────────────────────────────────────────────────────
 def scrape_news():
     print("Scraping news feeds...")
     all_articles = []
@@ -48,141 +51,169 @@ def scrape_news():
                     summary = re.sub(r"<[^>]+>", "", summary)[:200]
                     if title:
                         all_articles.append({
-                            "source":   feed_info["name"],
-                            "title":    title,
-                            "summary":  summary,
+                            "source":  feed_info["name"],
+                            "title":   title,
+                            "summary": summary,
                         })
                         count += 1
             print(f"  {feed_info['name']}: {count} articles")
             time.sleep(0.5)
         except Exception as e:
             print(f"  {feed_info['name']}: Failed ({e})")
-    print(f"Total articles collected: {len(all_articles)}")
+    print(f"Total articles: {len(all_articles)}")
     return all_articles
 
-def pick_best_articles(articles):
-    """Pick top articles per category to stay within Groq token limit."""
-    nepal_sources = ["Kantipur","Onlinekhabar","Setopati","Ratopati",
-                     "Nepal Khabar","Nagarik News","Nepal News",
-                     "Naya Patrika","Himalkhabar","Republica",
-                     "Himalayan Times","Kathmandu Post"]
-    world_sources = ["BBC World","Al Jazeera"]
-    biz_sources   = ["Karobar","ShareSansar"]
-
-    nepal  = [a for a in articles if a["source"] in nepal_sources][:25]
-    world  = [a for a in articles if a["source"] in world_sources][:8]
-    biz    = [a for a in articles if a["source"] in biz_sources][:6]
-
-    return nepal, world, biz
-
-def format_articles(arts):
-    text = ""
-    for i, a in enumerate(arts, 1):
-        text += f"{i}. [{a['source']}] {a['title']}\n"
+# ── Format article list ────────────────────────────────────────
+def fmt(arts, limit=15):
+    out = ""
+    for i, a in enumerate(arts[:limit], 1):
+        out += f"{i}. [{a['source']}] {a['title']}\n"
         if a["summary"]:
-            text += f"   {a['summary']}\n"
-    return text
+            out += f"   {a['summary']}\n"
+    return out
 
-def write_script_with_groq(articles):
-    if not articles:
-        return "कुनै समाचार फेला परेन।"
-
-    nepal, world, biz = pick_best_articles(articles)
-    today    = datetime.now().strftime("%Y-%m-%d")
-    day_name = datetime.now().strftime("%A")
-
-    prompt = f"""तपाईं नेपालका एक वरिष्ठ समाचार एंकर हुनुहुन्छ। तलका समाचारबाट २०-२५ मिनेटको रेडियो/यूट्युब स्क्रिप्ट लेख्नुस्।
-
-मिति: {today}, {day_name}
-
-नियमहरू:
-- कम्तीमा ५००० अक्षर लेख्नुस्
-- स्टोरीटेलिङ शैली — हरेक समाचारलाई कथाजस्तो बनाउनुस्
-- सानो समाचारमा पनि पृष्ठभूमि, कारण र असर थप्नुस्
-- "साथीहरू", "हाम्रा दर्शकहरू" भनी श्रोतालाई सम्बोधन गर्नुस्
-- शुद्ध नेपाली भाषा प्रयोग गर्नुस्
-- हरेक खण्डबीच सहज transition राख्नुस्
-
-स्क्रिप्टको ढाँचा:
-
-[परिचय — १५ सेकेन्ड]
-आकर्षक उद्घाटन। आजका मुख्य समाचारको टिजर।
-
-🔴 प्रमुख समाचार — २ मिनेट
-४-५ वटा सबैभन्दा महत्त्वपूर्ण समाचार। छोटो बुलेटिन शैलीमा।
-
-🇳🇵 राष्ट्रिय समाचार — ८-१० मिनेट
-७-८ वटा राष्ट्रिय समाचार। प्रत्येकलाई विस्तृत स्टोरीटेलिङ शैलीमा।
-पृष्ठभूमि, कारण, असर र भविष्यको विश्लेषण थप्नुस्।
-
-🌍 अन्तर्राष्ट्रिय समाचार — ४ मिनेट
-३-४ वटा विश्व समाचार। नेपालमा पर्ने प्रभाव उल्लेख गर्नुस्।
-
-💰 आर्थिक समाचार — ३ मिनेट
-बजार, व्यापार, रोजगारी सम्बन्धी समाचार विस्तृत रूपमा।
-
-🏏 खेलकुद — २ मिनेट
-क्रिकेट, फुटबल र अन्य खेल समाचार।
-
-🌤️ मौसम तथा अन्य — १ मिनेट
-मौसम अपडेट र छोटा समाचार।
-
-[समापन]
-धन्यवाद सन्देश।
-
-━━━ समाचार स्रोतहरू ━━━
-
-🇳🇵 नेपाली समाचार ({len(nepal)} वटा):
-{format_articles(nepal)}
-
-🌍 अन्तर्राष्ट्रिय ({len(world)} वटा):
-{format_articles(world)}
-
-💰 आर्थिक ({len(biz)} वटा):
-{format_articles(biz)}
-
-━━━━━━━━━━━━━━━━━━━━━━━━
-अब पूरा स्क्रिप्ट लेख्नुस् — कम्तीमा ५००० अक्षर:"""
-
+# ── Single Groq call ───────────────────────────────────────────
+def groq_call(prompt, max_tokens=2500):
     headers = {
         "Authorization": f"Bearer {GROQ_API_KEY}",
-        "Content-Type": "application/json"
+        "Content-Type":  "application/json"
     }
     payload = {
-        "model": "llama-3.3-70b-versatile",
+        "model":    "llama-3.3-70b-versatile",
         "messages": [
-            {
-                "role": "system",
-                "content": "तपाईं नेपालका एक वरिष्ठ समाचार एंकर हुनुहुन्छ। स्टोरीटेलिङ शैलीमा लामो, विस्तृत र आकर्षक समाचार स्क्रिप्ट लेख्नुहुन्छ। शुद्ध नेपाली भाषामा मात्र जवाफ दिनुस्। कम्तीमा ५००० अक्षरको स्क्रिप्ट लेख्नुस्।"
-            },
-            {
-                "role": "user",
-                "content": prompt
-            }
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user",   "content": prompt}
         ],
         "temperature": 0.75,
-        "max_tokens": 8000
+        "max_tokens":  max_tokens
     }
-
     try:
-        response = requests.post(
+        resp = requests.post(
             "https://api.groq.com/openai/v1/chat/completions",
             headers=headers,
             json=payload,
-            timeout=120
+            timeout=90
         )
-        response.raise_for_status()
-        data   = response.json()
-        script = data["choices"][0]["message"]["content"]
-        print(f"Script written! Length: {len(script)} characters")
-        return script
+        resp.raise_for_status()
+        text = resp.json()["choices"][0]["message"]["content"]
+        print(f"  Section done: {len(text)} chars")
+        return text
     except Exception as e:
-        error_msg = str(e)
-        if GROQ_API_KEY in error_msg:
-            error_msg = error_msg.replace(GROQ_API_KEY, "***hidden***")
-        print(f"Groq error: {error_msg}")
-        return "स्क्रिप्ट बनाउन असफल। कृपया पछि पुनः प्रयास गर्नुस्।"
+        err = str(e).replace(GROQ_API_KEY, "***")
+        print(f"  Groq call failed: {err}")
+        return ""
 
+# ── Build full script in sections ─────────────────────────────
+def build_full_script(articles):
+    today = datetime.now().strftime("%Y-%m-%d")
+    day   = datetime.now().strftime("%A")
+
+    nepal  = [a for a in articles if a["source"] not in
+              ["BBC World","Al Jazeera","Karobar","ShareSansar"]]
+    world  = [a for a in articles if a["source"] in ["BBC World","Al Jazeera"]]
+    biz    = [a for a in articles if a["source"] in ["Karobar","ShareSansar"]]
+
+    sections = []
+
+    # ── Section 1: Intro + Pramukh Samachar ───────────────────
+    print("Writing Section 1: Intro + Pramukh Samachar...")
+    p1 = groq_call(f"""मिति: {today}, {day}
+
+तलका समाचारबाट यो स्क्रिप्ट लेख्नुस्:
+
+[परिचय — १५ सेकेन्ड]
+आकर्षक उद्घाटन वाक्यले सुरु गर्नुस्। आजका मुख्य ३ समाचारको टिजर दिनुस्। "नमस्कार साथीहरू, म [एंकर] बोल्दैछु" भनी सुरु गर्नुस्।
+
+🔴 प्रमुख समाचार — २ मिनेट
+तलका समाचारबाट सबैभन्दा महत्त्वपूर्ण ५ वटा छानेर बुलेटिन शैलीमा लेख्नुस्। प्रत्येक समाचार ३-४ वाक्यमा। स्पष्ट र प्रभावशाली।
+
+समाचारहरू:
+{fmt(nepal, 20)}
+
+कम्तीमा ८०० अक्षर लेख्नुस्।""", max_tokens=1500)
+    sections.append(p1)
+    time.sleep(2)
+
+    # ── Section 2: Rastriya Samachar ──────────────────────────
+    print("Writing Section 2: Rastriya Samachar...")
+    p2 = groq_call(f"""मिति: {today}
+
+🇳🇵 राष्ट्रिय समाचार — ८-१० मिनेट
+
+तलका नेपाली समाचारबाट ७-८ वटा छानेर स्टोरीटेलिङ शैलीमा लेख्नुस्।
+
+हरेक समाचारको लागि:
+- "साथीहरू, अब कुरा गरौं..." भनी सुरु गर्नुस्
+- पृष्ठभूमि र इतिहास दिनुस्
+- घटनाको कारण र असर विश्लेषण गर्नुस्
+- भविष्यमा के हुन सक्छ भनी बताउनुस्
+- प्रत्येक समाचार कम्तीमा १५० अक्षरमा लेख्नुस्
+
+समाचारहरू:
+{fmt(nepal, 20)}
+
+कम्तीमा २००० अक्षर लेख्नुस्।""", max_tokens=3000)
+    sections.append(p2)
+    time.sleep(2)
+
+    # ── Section 3: International + Business ───────────────────
+    print("Writing Section 3: International + Business...")
+    p3 = groq_call(f"""मिति: {today}
+
+🌍 अन्तर्राष्ट्रिय समाचार — ४ मिनेट
+
+तलका विश्व समाचारबाट ३-४ वटा छानेर लेख्नुस्। नेपालमा पर्ने प्रभाव अनिवार्य उल्लेख गर्नुस्। प्रत्येक समाचार कम्तीमा १५० अक्षरमा।
+
+अन्तर्राष्ट्रिय समाचार:
+{fmt(world, 8)}
+
+💰 आर्थिक तथा व्यापार समाचार — ३ मिनेट
+
+तलका आर्थिक समाचारबाट ३-४ वटा छानेर विस्तृत रूपमा लेख्नुस्। शेयर बजार, बैंकिङ, व्यापार, रोजगारीको जानकारी सरल भाषामा बुझाउनुस्।
+
+आर्थिक समाचार:
+{fmt(biz, 6)}
+
+यदि आर्थिक समाचार कम छन् भने नेपाली समाचारबाट आर्थिक विषयका समाचार छान्नुस्:
+{fmt([a for a in nepal if any(w in a['title'].lower() for w in ['बजार','बैंक','आर्थिक','व्यापार','रुपैयाँ','शेयर','लगानी','रोजगार'])], 5)}
+
+कम्तीमा १५०० अक्षर लेख्नुस्।""", max_tokens=2500)
+    sections.append(p3)
+    time.sleep(2)
+
+    # ── Section 4: Sports + Weather + Closing ─────────────────
+    print("Writing Section 4: Sports + Weather + Closing...")
+    p4 = groq_call(f"""मिति: {today}
+
+🏏 खेलकुद समाचार — २ मिनेट
+
+तलका समाचारबाट खेलकुद सम्बन्धी समाचार छानेर लेख्नुस्। क्रिकेट, फुटबल, र नेपाली खेलाडीका बारेमा लेख्नुस्।
+
+{fmt([a for a in nepal if any(w in a['title'].lower() for w in ['क्रिकेट','फुटबल','खेल','खेलाडी','टिम','मैच','आइपीएल','विश्वकप'])], 6)}
+
+🌤️ मौसम तथा अन्य छोटा समाचार — १ मिनेट
+
+नेपालको आजको मौसम अवस्था बताउनुस् (वसन्त ऋतु, चैत महिना, तराईमा गर्मी, पहाडमा मनपर्दो मौसम)। तलका अन्य समाचार एक-दुई वाक्यमा:
+
+{fmt(nepal[20:], 8)}
+
+[समापन — १५ सेकेन्ड]
+हार्दिक धन्यवाद सन्देश। अर्को अपडेटको जानकारी। च्यानल सब्स्क्राइब गर्न आग्रह।
+
+कम्तीमा ८०० अक्षर लेख्नुस्।""", max_tokens=1500)
+    sections.append(p4)
+
+    # ── Combine all sections ───────────────────────────────────
+    full_script = "\n\n".join(s for s in sections if s)
+    total_chars = len(full_script)
+    print(f"\nTotal script length: {total_chars} characters")
+
+    if total_chars < 3000:
+        print("WARNING: Script shorter than expected!")
+
+    return full_script
+
+# ── Send to Telegram ───────────────────────────────────────────
 def send_to_telegram(script, article_count):
     print("Sending to Telegram...")
     today  = datetime.now().strftime("%Y/%m/%d %H:%M")
@@ -190,7 +221,8 @@ def send_to_telegram(script, article_count):
         f"🇳🇵 ताजा समाचार स्क्रिप्ट\n"
         f"📅 {today}\n"
         f"📰 {article_count} समाचारबाट संकलित\n"
-        f"📻 अवधि: २०-२५ मिनेट\n\n"
+        f"📻 अवधि: २०-२५ मिनेट\n"
+        f"{'─'*30}\n\n"
     )
     full_message = header + script
     max_len = 4000
@@ -204,14 +236,18 @@ def send_to_telegram(script, article_count):
     parts.append(full_message)
 
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    print(f"Sending {len(parts)} messages to Telegram...")
     for i, part in enumerate(parts):
         try:
-            payload = {"chat_id": TELEGRAM_CHAT_ID, "text": part}
-            resp    = requests.post(url, json=payload, timeout=30)
+            resp = requests.post(
+                url,
+                json={"chat_id": TELEGRAM_CHAT_ID, "text": part},
+                timeout=30
+            )
             if resp.status_code == 200:
                 print(f"  Part {i+1}/{len(parts)} sent!")
             else:
-                print(f"  Part {i+1} failed: {resp.text[:300]}")
+                print(f"  Part {i+1} failed: {resp.text[:200]}")
             time.sleep(1)
         except Exception as e:
             print(f"  Telegram error: {e}")
@@ -220,8 +256,9 @@ def save_to_file(script):
     filename = f"script_{datetime.now().strftime('%Y%m%d_%H%M')}.txt"
     with open(filename, "w", encoding="utf-8") as f:
         f.write(script)
-    print(f"Saved to {filename} ({len(script)} chars)")
+    print(f"Saved: {filename} ({len(script)} chars)")
 
+# ── Main ───────────────────────────────────────────────────────
 def main():
     print("=" * 50)
     print("Nepal News AI Bot Starting...")
@@ -236,10 +273,10 @@ def main():
         return
 
     articles = scrape_news()
-    script   = write_script_with_groq(articles)
+    script   = build_full_script(articles)
     save_to_file(script)
     send_to_telegram(script, len(articles))
-    print("Done! Check your Telegram.")
+    print("\nDone! Check your Telegram.")
 
 if __name__ == "__main__":
     main()
