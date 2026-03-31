@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 import time
 import re
 
-GEMINI_API_KEY   = os.environ.get("GEMINI_API_KEY", "")
+GROQ_API_KEY     = os.environ.get("GROQ_API_KEY", "")
 TELEGRAM_TOKEN   = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 
@@ -55,40 +55,38 @@ def scrape_news():
     print(f"Total articles: {len(all_articles)}")
     return all_articles
 
-def write_script_with_gemini(articles):
+def write_script_with_groq(articles):
     if not articles:
         return "कुनै समाचार फेला परेन।"
-    print("Sending to Gemini AI...")
+    print("Sending to Groq AI...")
+
     article_text = ""
     for i, a in enumerate(articles[:60], 1):
         article_text += f"{i}. [{a['source']}] {a['title']}\n"
         if a['summary']:
             article_text += f"   सारांश: {a['summary'][:200]}\n"
         article_text += "\n"
+
     today = datetime.now().strftime("%Y-%m-%d")
+
     prompt = f"""तपाईं एक अनुभवी नेपाली समाचार एंकर हुनुहुन्छ। तल दिइएका पछिल्लो २४ घण्टाका समाचार शीर्षकहरूबाट एउटा पूर्ण प्रसारण समाचार स्क्रिप्ट लेख्नुस्।
 
 आजको मिति: {today}
 
 स्क्रिप्टको ढाँचा यसरी हुनुपर्छ:
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🔴 प्रमुख समाचार (पहिलो ३ मिनेट)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-(सबैभन्दा महत्त्वपूर्ण ५ वटा समाचार छान्नुस्। प्रत्येक समाचार ३-४ वाक्यमा बुलेटिन शैलीमा लेख्नुस्।)
+🔴 प्रमुख समाचार (पहिलो २-३ मिनेट)
+सबैभन्दा महत्त्वपूर्ण ५ वटा समाचार छान्नुस्। प्रत्येक समाचार ३-४ वाक्यमा बुलेटिन शैलीमा लेख्नुस्।
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📋 विस्तृत समाचार
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-(बाँकी ८-१० वटा महत्त्वपूर्ण समाचारहरू विस्तृत र व्याख्यात्मक तरिकाले लेख्नुस्।)
+📋 विस्तृत समाचार (१५-२० मिनेट)
+बाँकी १०-१५ वटा महत्त्वपूर्ण समाचारहरू विस्तृत र व्याख्यात्मक तरिकाले लेख्नुस्। पाठकलाई सन्दर्भ र पृष्ठभूमि जानकारी दिनुस्।
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📌 अन्य छोटो समाचार
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-(बाँकी समाचारहरू एक-दुई वाक्यमा)
+बाँकी समाचारहरू एक-दुई वाक्यमा।
 
 नियमहरू:
 - शुद्ध नेपाली भाषामा लेख्नुस्
+- समाचार एंकरको शैलीमा लेख्नुस्
 - प्रत्येक समाचारको स्रोत उल्लेख गर्नुस्
 - नक्कली तथ्य नथप्नुस्
 
@@ -97,32 +95,53 @@ def write_script_with_gemini(articles):
 
 अब स्क्रिप्ट लेख्नुस्:"""
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
-    payload = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0.7, "maxOutputTokens": 4096}
+    headers = {
+        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Content-Type": "application/json"
     }
+
+    payload = {
+        "model": "llama-3.3-70b-versatile",
+        "messages": [
+            {
+                "role": "system",
+                "content": "तपाईं एक अनुभवी नेपाली समाचार एंकर हुनुहुन्छ। शुद्ध नेपाली भाषामा मात्र जवाफ दिनुस्।"
+            },
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ],
+        "temperature": 0.7,
+        "max_tokens": 4096
+    }
+
     try:
-        response = requests.post(url, json=payload, timeout=60)
+        response = requests.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers=headers,
+            json=payload,
+            timeout=60
+        )
         response.raise_for_status()
-        data = response.json()
-        script = data["candidates"][0]["content"]["parts"][0]["text"]
+        data   = response.json()
+        script = data["choices"][0]["message"]["content"]
         print("Script written successfully!")
         return script
     except Exception as e:
         error_msg = str(e)
-        if GEMINI_API_KEY in error_msg:
-            error_msg = error_msg.replace(GEMINI_API_KEY, "***hidden***")
-        print(f"Gemini error: {error_msg}")
+        if GROQ_API_KEY in error_msg:
+            error_msg = error_msg.replace(GROQ_API_KEY, "***hidden***")
+        print(f"Groq error: {error_msg}")
         return "स्क्रिप्ट बनाउन असफल। कृपया पछि पुनः प्रयास गर्नुस्।"
 
 def send_to_telegram(script, article_count):
     print("Sending to Telegram...")
-    today = datetime.now().strftime("%Y/%m/%d %H:%M")
+    today  = datetime.now().strftime("%Y/%m/%d %H:%M")
     header = f"🇳🇵 नेपाल समाचार स्क्रिप्ट\n📅 {today}\n📰 {article_count} समाचारबाट संकलित\n\n"
     full_message = header + script
     max_len = 4000
-    parts = []
+    parts   = []
     while len(full_message) > max_len:
         split_at = full_message.rfind('\n', 0, max_len)
         if split_at == -1:
@@ -130,11 +149,12 @@ def send_to_telegram(script, article_count):
         parts.append(full_message[:split_at])
         full_message = full_message[split_at:].lstrip()
     parts.append(full_message)
+
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     for i, part in enumerate(parts):
         try:
             payload = {"chat_id": TELEGRAM_CHAT_ID, "text": part}
-            resp = requests.post(url, json=payload, timeout=30)
+            resp    = requests.post(url, json=payload, timeout=30)
             if resp.status_code == 200:
                 print(f"  Part {i+1}/{len(parts)} sent!")
             else:
@@ -154,14 +174,16 @@ def main():
     print("Nepal News AI Bot Starting...")
     print(f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     print("=" * 50)
-    if not GEMINI_API_KEY:
-        print("ERROR: GEMINI_API_KEY not set!")
+
+    if not GROQ_API_KEY:
+        print("ERROR: GROQ_API_KEY not set!")
         return
     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
-        print("ERROR: TELEGRAM credentials not set!")
+        print("ERROR: Telegram credentials not set!")
         return
+
     articles = scrape_news()
-    script   = write_script_with_gemini(articles)
+    script   = write_script_with_groq(articles)
     save_to_file(script)
     send_to_telegram(script, len(articles))
     print("Done! Check your Telegram.")
